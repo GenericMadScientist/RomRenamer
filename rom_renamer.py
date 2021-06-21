@@ -45,6 +45,9 @@ class GameFile:
     def __hash__(self):
         return hash((self.name, self.size, self.crc, self.md5, self.sha1))
 
+    def checksums(self):
+        return (self.sha1, self.md5, self.crc, self.size)
+
 
 class Game:
     def __init__(self, console, game_node):
@@ -102,7 +105,7 @@ class GameList:
         matches = []
         for game in self.games:
             for file in game.files:
-                if hashes == (file.sha1, file.md5, file.crc, file.size):
+                if hashes == file.checksums():
                     matches.append((file, game))
 
         return matches
@@ -124,9 +127,19 @@ class GameCollection:
                 self.collection[game][game_file] = []
             self.collection[game][game_file].append(file)
 
-    def incomplete_games(self):
+    def complete_games(self):
         for game, files in self.collection.items():
-            if len(files) != len(game.files):
+            if len(files) == len(game.files):
+                yield game
+
+    def incomplete_games(self):
+        used_files = set()
+        full_games = set(self.complete_games())
+        for game, files in self.collection.items():
+            if game in full_games:
+                used_files.update(f.checksums() for f in files)
+        for game, files in self.collection.items():
+            if not used_files.issuperset(f.checksums() for f in files):
                 yield game
 
 
