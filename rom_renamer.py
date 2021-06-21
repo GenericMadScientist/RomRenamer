@@ -18,6 +18,8 @@
 
 import hashlib
 import os
+import random
+import shutil
 import sys
 import xml.etree.ElementTree as ET
 import zlib
@@ -113,7 +115,7 @@ class GameList:
 
 class GameCollection:
     def __init__(self):
-        self.collection = {}
+        self.__collection = {}
         self.unrecognised_files = set()
 
     def add_game_file(self, db, file):
@@ -121,26 +123,41 @@ class GameCollection:
         if not matches:
             self.unrecognised_files.add(file)
         for game_file, game in matches:
-            if game not in self.collection:
-                self.collection[game] = {}
-            if game_file not in self.collection[game]:
-                self.collection[game][game_file] = []
-            self.collection[game][game_file].append(file)
+            if game not in self.__collection:
+                self.__collection[game] = {}
+            if game_file not in self.__collection[game]:
+                self.__collection[game][game_file] = []
+            self.__collection[game][game_file].append(file)
 
     def complete_games(self):
-        for game, files in self.collection.items():
+        for game, files in self.__collection.items():
             if len(files) == len(game.files):
                 yield game
 
     def incomplete_games(self):
         used_files = set()
         full_games = set(self.complete_games())
-        for game, files in self.collection.items():
+        for game, files in self.__collection.items():
             if game in full_games:
                 used_files.update(f.checksums() for f in files)
-        for game, files in self.collection.items():
+        for game, files in self.__collection.items():
             if not used_files.issuperset(f.checksums() for f in files):
                 yield game
+
+
+def move_with_dirs(src, dst):
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.move(src, dst)
+
+
+def move_unrecognised_files(rom_dir, collection):
+    unrecognised = os.path.join(rom_dir, 'Unrecognised files')
+    for file in collection.unrecognised_files:
+        dst = os.path.relpath(file, rom_dir)
+        if os.path.realpath(file).startswith(os.path.realpath(unrecognised)):
+            continue
+        dst = os.path.join(unrecognised, dst)
+        move_with_dirs(file, dst)
 
 
 def main(rom_dir, dat_dir):
@@ -166,11 +183,21 @@ def main(rom_dir, dat_dir):
     for rom in roms:
         collection.add_game_file(game_list, rom)
 
-    for file in sorted(collection.unrecognised_files):
-        print(f'Unrecognised file: {file}')
+    move_unrecognised_files(rom_dir, collection)
 
     for game in collection.incomplete_games():
         print(f'Incomplete game: {game.name}')
+
+    while True:
+        try:
+            temp_dir = f'temp_{random.randrange(0xFFFFFFFF)}'
+            temp_dir = os.path.join(rom_dir, temp_dir)
+            os.mkdir(temp_dir)
+            break
+        except FileExistsError:
+            pass
+
+    os.rmdir(temp_dir)
 
 
 if __name__ == '__main__':
