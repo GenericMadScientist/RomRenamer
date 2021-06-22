@@ -1,6 +1,6 @@
 # RomRenamer
 
-A script for mass-renaming your ROMs (at least, it will soon).
+A script for mass-renaming your ROMs.
 
 ## Install
 
@@ -21,10 +21,10 @@ Run the script specifying your ROM directory, like so:
 > python rom_renamer.py C:/ROMs
 ```
 
-For now the script will list all files not contained in the DTAs and any games
-that only have some of their files present (this can happen with PSX games for
-example, if you have the right .bin but incorrect .cue). I plan to add renaming
-and reorganising features soon.
+The script will group files according to console and rename according to the
+DAT files. Unrecognised files are placed in their own directory. Files part of
+multi-file games (e.g., PSX games) that do not have all files present are placed
+in an incomplete games folder.
 
 ## Contact
 

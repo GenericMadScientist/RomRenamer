@@ -113,25 +113,66 @@ class GameCollection:
                 self.__collection[game][game_file] = []
             self.__collection[game][game_file].append(file)
 
-    def complete_games(self):
+    def __complete_games(self):
+        complete_games = set()
         for game, files in self.__collection.items():
             if len(files) == len(game.files):
-                yield game
+                complete_games.add(game)
+        return complete_games
 
-    def incomplete_games(self):
+    def __used_files(self):
         used_files = set()
-        full_games = set(self.complete_games())
+        full_games = self.__complete_games()
         for game, files in self.__collection.items():
             if game in full_games:
                 used_files.update(f.checksums() for f in files)
+        return used_files
+
+    def files_in_games(self):
+        game_files = set()
+        for files in self.__collection.values():
+            for dat_entry, file_paths in files.items():
+                game_files.update((f, dat_entry.sha1) for f in file_paths)
+        return game_files
+
+    def __file_path(self, game, file_hash):
+        path = game.console
+        if len(game.files) > 1:
+            path = os.path.join(path, game.name)
+        for file in game.files:
+            if file.sha1 == file_hash:
+                return os.path.join(path, file.name)
+        raise RuntimeError("File not in game")
+
+    def renames(self):
+        used_files = self.__used_files()
+        full_games = self.__complete_games()
+        file_dsts = {}
         for game, files in self.__collection.items():
-            if not used_files.issuperset(f.checksums() for f in files):
-                yield game
+            if game in full_games:
+                for f in files:
+                    if f.sha1 not in file_dsts:
+                        file_dsts[f.sha1] = []
+                    file_dsts[f.sha1].append(self.__file_path(game, f.sha1))
+            else:
+                for f in files:
+                    if f.checksums() not in used_files:
+                        if f.sha1 not in file_dsts:
+                            file_dsts[f.sha1] = []
+                        path = self.__file_path(game, f.sha1)
+                        path = os.path.join('Incomplete games', path)
+                        file_dsts[f.sha1].append(path)
+        return file_dsts
 
 
 def move_with_dirs(src, dst):
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     shutil.move(src, dst)
+
+
+def copy_with_dirs(src, dst):
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copy2(src, dst)
 
 
 def move_unrecognised_files(rom_dir, collection):
@@ -142,6 +183,44 @@ def move_unrecognised_files(rom_dir, collection):
             continue
         dst = os.path.join(unrecognised, dst)
         move_with_dirs(file, dst)
+
+
+def create_temp_dir(rom_dir):
+    while True:
+        try:
+            temp_dir = f'temp_{random.randrange(0xFFFFFFFF)}'
+            temp_dir = os.path.join(rom_dir, temp_dir)
+            os.mkdir(temp_dir)
+            return temp_dir
+        except FileExistsError:
+            pass
+
+
+def move_into_temp(collection, temp_dir):
+    files_to_move = collection.files_in_games()
+    for path, hash in files_to_move:
+        move_with_dirs(path, os.path.join(temp_dir, hash))
+
+
+def move_from_temp(rom_dir, collection, temp_dir):
+    renames = collection.renames()
+    for file_hash, dsts in renames.items():
+        src = os.path.join(temp_dir, file_hash)
+        for dst in dsts[1:]:
+            copy_with_dirs(src, os.path.join(rom_dir, dst))
+        move_with_dirs(src, os.path.join(rom_dir, dsts[0]))
+
+
+def clean_empty_folders(rom_dir):
+    while True:
+        empty_dirs = []
+        for root, subdirs, files in os.walk(rom_dir):
+            if not subdirs and not files:
+                empty_dirs.append(root)
+        for dir in empty_dirs:
+            os.rmdir(dir)
+        if not empty_dirs:
+            return
 
 
 def main(rom_dir, dat_dir):
@@ -158,30 +237,17 @@ def main(rom_dir, dat_dir):
 
     roms = []
     for root, _, files in os.walk(rom_dir):
-        if not files:
-            continue
-        for f in files:
-            roms.append(os.path.join(root, f))
+        roms.extend(os.path.join(root, f) for f in files)
 
     collection = GameCollection()
     for rom in roms:
         collection.add_game_file(game_list, rom)
 
     move_unrecognised_files(rom_dir, collection)
-
-    for game in collection.incomplete_games():
-        print(f'Incomplete game: {game.name}')
-
-    while True:
-        try:
-            temp_dir = f'temp_{random.randrange(0xFFFFFFFF)}'
-            temp_dir = os.path.join(rom_dir, temp_dir)
-            os.mkdir(temp_dir)
-            break
-        except FileExistsError:
-            pass
-
-    os.rmdir(temp_dir)
+    temp_dir = create_temp_dir(rom_dir)
+    move_into_temp(collection, temp_dir)
+    move_from_temp(rom_dir, collection, temp_dir)
+    clean_empty_folders(rom_dir)
 
 
 if __name__ == '__main__':
