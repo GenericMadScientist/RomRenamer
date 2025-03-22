@@ -29,4 +29,5 @@ in an incomplete games folder.
 ## Contact
 
 If you have any bug reports or feature requests I would prefer they be reported
-on the GitHub page, but feel free to send them to me on Discord at GMS#5303.
+on the GitHub page, but feel free to send them to me on Discord at
+genericmadscientist.
